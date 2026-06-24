@@ -12,9 +12,11 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.graph import build_graph
 from app.api.routes.chat import router as chat_router
+from app.config import settings
 from app.core.logging import configure_logging
 from app.db.connection import engine
 
@@ -33,6 +35,14 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Banking CRM Agent", lifespan=lifespan)
+
+    # CORS scoped to the dev frontend origin so the browser can call /chat.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_origin],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     async def health() -> dict:

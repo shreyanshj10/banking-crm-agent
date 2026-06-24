@@ -32,5 +32,8 @@ class Settings(BaseSettings):
     # Logging verbosity (DEBUG/INFO/WARNING/...). Configurable without code changes.
     log_level: str = "INFO"
 
+    # Dev frontend origin allowed by CORS (the Next.js dev server).
+    frontend_origin: str = "http://localhost:3000"
+
 
 settings = Settings()

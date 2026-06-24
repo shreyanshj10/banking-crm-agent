@@ -1,0 +1,28 @@
+# Pre-commit hooks — backend: ruff (lint + format); frontend: ESLint + Prettier.
+# Activate once:  pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff            # lint (auto-fix)
+        name: ruff (backend lint)
+        args: [--fix]
+        files: ^backend/.*\.py$
+      - id: ruff-format     # format
+        name: ruff (backend format)
+        files: ^backend/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npm run lint'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: prettier
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && npm run format:check'
+        language: system
+        files: ^frontend/(app/.*\.(ts|tsx|css)|.*\.(json|md))$
+        pass_filenames: false

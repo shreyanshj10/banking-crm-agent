@@ -1,0 +1,464 @@
+:root {
+  --ink: #15233b;
+  --ink-soft: #2f405a;
+  --canvas: #e6eaef;
+  --surface: #ffffff;
+  --thread: #f6f8fb;
+  --line: #d8dee7;
+  --muted: #62717f;
+  --accent: #0e7c66;
+  --accent-weak: #e3f0ec;
+  --accent-line: #c8e2da;
+
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Full-width app frame — fills the viewport, no side gutters. */
+.desk {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--thread);
+}
+
+/* Header ---------------------------------------------------------------- */
+.desk__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.brand__mark {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--ink);
+  flex: none;
+}
+
+.brand__mark::after {
+  content: '';
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.brand__name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.brand__name small {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+/* Thread ---------------------------------------------------------------- */
+.thread {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+}
+
+/* Empty state ----------------------------------------------------------- */
+.empty {
+  margin: auto 0;
+  padding: 8px 2px;
+}
+
+.empty h2 {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+}
+
+.empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+.empty__label {
+  margin: 22px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.05s;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.chip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+/* Messages -------------------------------------------------------------- */
+.msg {
+  max-width: 100%;
+}
+
+.msg--user {
+  align-self: flex-end;
+  max-width: 78%;
+  background: var(--ink);
+  color: #fff;
+  padding: 11px 15px;
+  border-radius: 14px 14px 4px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.msg--assistant {
+  align-self: stretch;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(21, 35, 59, 0.04);
+}
+
+/* Markdown body --------------------------------------------------------- */
+.md {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin: 16px 0 8px;
+}
+
+.md h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 14px 0 6px;
+}
+
+.md p {
+  margin: 8px 0;
+}
+
+.md strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.md ul,
+.md ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.md li {
+  margin: 4px 0;
+}
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 14px 0;
+}
+
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 12.5px;
+}
+
+.md th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 7px 10px;
+  border-bottom: 2px solid var(--line);
+}
+
+.md td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.md tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Signature: the agent-path audit ribbon -------------------------------- */
+.trace {
+  margin-top: 15px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.trace__label {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.trace__tool {
+  background: var(--accent-weak);
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.trace__arrow {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* Thinking indicator ---------------------------------------------------- */
+.thinking {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 4px 2px;
+}
+
+.thinking__dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.thinking__dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: blink 1.2s infinite ease-in-out both;
+}
+
+.thinking__dots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.thinking__dots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Composer -------------------------------------------------------------- */
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.composer input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 16px;
+}
+
+.composer input::placeholder {
+  color: var(--muted);
+}
+
+.composer input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.composer button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  padding: 0 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.composer button:hover:not(:disabled) {
+  background: #0b6957;
+}
+
+.composer button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.composer button:disabled {
+  background: #a7b4be;
+  cursor: not-allowed;
+}
+
+/* Responsive ------------------------------------------------------------ */
+@media (max-width: 620px) {
+  .desk {
+    border-left: none;
+    border-right: none;
+  }
+  .chips {
+    grid-template-columns: 1fr;
+  }
+  .msg--user {
+    max-width: 88%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
