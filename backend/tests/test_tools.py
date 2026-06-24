@@ -38,3 +38,21 @@ async def test_query_customers_default_limit_applies_and_is_overridable():
 
     capped = await query_customers.ainvoke({"limit": 5})
     assert len(capped) == 5, len(capped)
+
+
+async def test_holds_product_id_keeps_only_active_holders():
+    # holds_product_id (EXISTS) is the exact complement of exclude_product_id
+    # (NOT EXISTS) on the same data: every customer either actively holds PL001
+    # or doesn't, with no overlap.
+    big = 1000
+    holders = await query_customers.ainvoke({"holds_product_id": "PL001", "limit": big})
+    non_holders = await query_customers.ainvoke({"exclude_product_id": "PL001", "limit": big})
+    everyone = await query_customers.ainvoke({"limit": big})
+
+    holder_ids = {c["id"] for c in holders}
+    non_ids = {c["id"] for c in non_holders}
+    all_ids = {c["id"] for c in everyone}
+
+    assert holder_ids, "expected some active PL001 holders in the seed"
+    assert holder_ids.isdisjoint(non_ids), "a customer can't be both a holder and a non-holder"
+    assert holder_ids | non_ids == all_ids, "holders + non-holders must partition the whole book"

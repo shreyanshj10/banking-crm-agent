@@ -76,6 +76,7 @@ async def query_customers(
     segment: str | None = None,
     city: str | None = None,
     exclude_product_id: str | None = None,
+    holds_product_id: str | None = None,
     customer_since_on_or_before: str | None = None,
     order_by: str | None = None,
     limit: int = 25,
@@ -90,6 +91,9 @@ async def query_customers(
         city: exact city.
         exclude_product_id: drop customers who actively hold this product
             (e.g. "PL001" to exclude existing personal-loan holders).
+        holds_product_id: the mirror of exclude_product_id — KEEP only customers
+            who actively hold this product (e.g. "CC002" to find existing
+            Everyday-card holders for an upgrade). One call, in SQL.
         customer_since_on_or_before: ISO date; keep customers whose relationship
             began on or before this date.
         order_by: sort the results in SQL — "balance" or "income" (highest
@@ -110,6 +114,7 @@ async def query_customers(
             segment=segment,
             city=city,
             exclude_product_id=exclude_product_id,
+            holds_product_id=holds_product_id,
             customer_since_on_or_before=since,
             order_by=order_by,
             limit=limit,

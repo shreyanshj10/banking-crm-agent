@@ -47,6 +47,7 @@ async def query_customers(
     segment: str | None = None,
     city: str | None = None,
     exclude_product_id: str | None = None,
+    holds_product_id: str | None = None,
     customer_since_on_or_before: date | None = None,
     order_by: str | None = None,
     limit: int | None = None,
@@ -55,6 +56,9 @@ async def query_customers(
 
     `exclude_product_id` drops customers who hold that product actively
     (e.g. exclude existing personal-loan holders) via a correlated NOT EXISTS.
+    `holds_product_id` is its mirror: KEEP only customers who actively hold that
+    product (correlated EXISTS) — e.g. to find existing lower-tier holders for an
+    upgrade. The product id is a bound value, not interpolated.
     `customer_since_on_or_before` keeps customers whose relationship began on or
     before the given date (a tenure filter).
     `order_by` sorts in SQL by a whitelisted column ("balance" or "income",
@@ -82,6 +86,14 @@ async def query_customers(
             .where(Holding.status == "active")
         )
         stmt = stmt.where(~active_holding.exists())
+    if holds_product_id is not None:
+        held = (
+            select(Holding.id)
+            .where(Holding.customer_id == Customer.id)
+            .where(Holding.product_id == holds_product_id)
+            .where(Holding.status == "active")
+        )
+        stmt = stmt.where(held.exists())
 
     sort_column = _SORTABLE_COLUMNS.get(order_by) if order_by else None
     if sort_column is not None:
