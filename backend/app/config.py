@@ -29,5 +29,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-4-8"
     anthropic_message_model: str = "claude-opus-4-8"
 
+    # Logging verbosity (DEBUG/INFO/WARNING/...). Configurable without code changes.
+    log_level: str = "INFO"
+
 
 settings = Settings()
