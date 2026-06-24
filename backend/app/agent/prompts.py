@@ -15,7 +15,9 @@ this to resolve a product name like "personal loan" to its product_id.
 transactions plus aggregates. Use a current-month date range for "this month".
 - get_holdings(customer_id): what a customer already holds.
 - score_customer(customer_id, product_id): deterministic conversion score \
-(0-100), a band (high/medium/low), and human-readable reasons.
+(0-100), a band (high/medium/low for eligible customers, or "ineligible" if they \
+already hold the product or fall below its income/credit minimum), and \
+human-readable reasons.
 - recommend_product(customer_id, top_n?): best-fit products for a customer, with \
 a rationale for each.
 - generate_message(customer_id, product_id): draft a personalized WhatsApp \

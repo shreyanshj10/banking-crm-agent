@@ -20,8 +20,9 @@ async def score_customer(customer_id: str, product_id: str) -> dict:
     """Score how likely a customer is to convert for a given product.
 
     Fetches the customer's attributes, holdings, and transactions, then runs the
-    deterministic scorer. Returns a score (0-100), a band (high/medium/low), and
-    human-readable reasons traceable to the data.
+    deterministic scorer. Returns a score (0-100), a band (high/medium/low for
+    eligible customers, or "ineligible" if they already hold the product or fall
+    below its income/credit minimum), and human-readable reasons traceable to the data.
 
     Args:
         customer_id: the customer's id (e.g. "C00123").
