@@ -77,7 +77,8 @@ async def query_customers(
     city: str | None = None,
     exclude_product_id: str | None = None,
     customer_since_on_or_before: str | None = None,
-    limit: int | None = None,
+    order_by: str | None = None,
+    limit: int = 25,
 ) -> list[dict]:
     """Find customers matching optional filters (all applied in SQL).
 
@@ -91,7 +92,11 @@ async def query_customers(
             (e.g. "PL001" to exclude existing personal-loan holders).
         customer_since_on_or_before: ISO date; keep customers whose relationship
             began on or before this date.
-        limit: cap the number of rows returned.
+        order_by: sort the results in SQL — "balance" or "income" (highest
+            first). Use this for "top N by balance/income" rather than sorting
+            yourself. Defaults to credit score then income.
+        limit: cap the number of rows returned (default 25; raise it if you
+            explicitly need more).
 
     Returns a list of customer objects.
     """
@@ -106,6 +111,7 @@ async def query_customers(
             city=city,
             exclude_product_id=exclude_product_id,
             customer_since_on_or_before=since,
+            order_by=order_by,
             limit=limit,
         )
         return [_customer_dict(c) for c in rows]

@@ -17,6 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Customer, Holding, Product, Transaction
 
+# Whitelist of sortable columns: maps a safe key to an ORM column. The agent
+# supplies only a key from this map, so a raw column name from input is never
+# interpolated into SQL.
+_SORTABLE_COLUMNS = {
+    "balance": Customer.monthly_avg_balance,
+    "income": Customer.annual_income,
+    "credit_score": Customer.credit_score,
+}
+
 
 def month_window(today: date | None = None) -> tuple[date, date]:
     """Return (first day of the current month, today), computed relative to now.
@@ -39,6 +48,7 @@ async def query_customers(
     city: str | None = None,
     exclude_product_id: str | None = None,
     customer_since_on_or_before: date | None = None,
+    order_by: str | None = None,
     limit: int | None = None,
 ) -> list[Customer]:
     """Filter customers in SQL. All predicates use bound parameters.
@@ -47,6 +57,8 @@ async def query_customers(
     (e.g. exclude existing personal-loan holders) via a correlated NOT EXISTS.
     `customer_since_on_or_before` keeps customers whose relationship began on or
     before the given date (a tenure filter).
+    `order_by` sorts in SQL by a whitelisted column ("balance" or "income",
+    highest first); any other/empty value falls back to the default ordering.
     """
     stmt = select(Customer)
 
@@ -71,7 +83,12 @@ async def query_customers(
         )
         stmt = stmt.where(~active_holding.exists())
 
-    stmt = stmt.order_by(Customer.credit_score.desc(), Customer.annual_income.desc())
+    sort_column = _SORTABLE_COLUMNS.get(order_by) if order_by else None
+    if sort_column is not None:
+        stmt = stmt.order_by(sort_column.desc())  # highest first
+    else:
+        # default ordering (also the safe fallback for an unrecognized order_by)
+        stmt = stmt.order_by(Customer.credit_score.desc(), Customer.annual_income.desc())
     if limit is not None:
         stmt = stmt.limit(limit)
 
