@@ -28,7 +28,7 @@ from app.config import settings
 from app.tools.data_tools import get_holdings, get_products, get_transactions, query_customers
 from app.tools.messaging_tools import generate_message, send_whatsapp
 from app.tools.recommend_tool import recommend_product
-from app.tools.scoring_tool import score_customer
+from app.tools.scoring_tool import score_customers
 
 logger = logging.getLogger("banking_crm.agent")
 
@@ -37,7 +37,7 @@ TOOLS = [
     get_transactions,
     get_products,
     get_holdings,
-    score_customer,
+    score_customers,
     recommend_product,
     generate_message,
     send_whatsapp,
@@ -117,14 +117,29 @@ def _summarize_result(name: str, content: str) -> str:
     return _truncate(content)
 
 
-async def run_agent(graph, query: str, thread_id: str) -> AIMessage | None:
+def _parse_content(content: str):
+    for parse in (json.loads, ast.literal_eval):
+        try:
+            return parse(content)
+        except (ValueError, SyntaxError):
+            continue
+    return None
+
+
+async def run_agent(graph, query: str, thread_id: str) -> dict:
     """Run one RM query through the agent, logging a readable per-request trace.
 
-    Driven via `astream` (async only). Returns the final AIMessage.
+    Driven via `astream` (async only). Returns a structured result:
+        {"reply": str, "tool_calls": [{name, args}, ...],
+         "generated_messages": [{customer_id, product_id, message}, ...]}
+    so the API route can stay thin (no business logic in the route).
     """
     logger.info("[%s] QUERY: %s", thread_id, query)
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
-    final: AIMessage | None = None
+
+    reply = ""
+    tool_calls: list[dict] = []
+    generated_messages: list[dict] = []
 
     async for update in graph.astream(
         {"messages": [HumanMessage(content=query)]}, config, stream_mode="updates"
@@ -133,28 +148,30 @@ async def run_agent(graph, query: str, thread_id: str) -> AIMessage | None:
             for msg in payload.get("messages", []):
                 if isinstance(msg, AIMessage):
                     for call in msg.tool_calls or []:
+                        tool_calls.append({"name": call["name"], "args": call["args"]})
                         logger.info(
                             "[%s] TOOL CALL  %s args=%s", thread_id, call["name"], call["args"]
                         )
                     if not msg.tool_calls and (msg.content or "").strip():
-                        final = msg
-                        logger.info(
-                            "[%s] FINAL RESPONSE: %s",
-                            thread_id,
-                            _truncate(
-                                msg.content if isinstance(msg.content, str) else str(msg.content),
-                                600,
-                            ),
-                        )
+                        reply = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        logger.info("[%s] FINAL RESPONSE: %s", thread_id, _truncate(reply, 600))
                 elif isinstance(msg, ToolMessage):
+                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
                     logger.info(
                         "[%s] TOOL RESULT %s -> %s",
                         thread_id,
                         msg.name,
-                        _summarize_result(
-                            msg.name,
-                            msg.content if isinstance(msg.content, str) else str(msg.content),
-                        ),
+                        _summarize_result(msg.name, content),
                     )
+                    if msg.name == "generate_message":
+                        data = _parse_content(content)
+                        if isinstance(data, dict) and data.get("message"):
+                            generated_messages.append(
+                                {
+                                    "customer_id": data.get("customer_id"),
+                                    "product_id": data.get("product_id"),
+                                    "message": data.get("message"),
+                                }
+                            )
 
-    return final
+    return {"reply": reply, "tool_calls": tool_calls, "generated_messages": generated_messages}
