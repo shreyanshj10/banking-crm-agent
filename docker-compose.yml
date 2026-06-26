@@ -1,0 +1,85 @@
+# Local development stack: PostgreSQL + the FastAPI backend.
+#
+# The Postgres image auto-creates the `crm` role and `banking_crm` database on first
+# start (so the manual CREATE ROLE / CREATE DATABASE step is unnecessary with Docker).
+# The backend waits for a HEALTHY database (no migration race), applies migrations,
+# seeds synthetic data, then serves the API on :8000. The Next.js frontend runs on the
+# host (see frontend/README.md) with NEXT_PUBLIC_API_BASE_URL=http://localhost:8000.
+#
+#   cp backend/.env.example backend/.env   # then fill ANTHROPIC_API_KEY
+#   docker compose up --build              # start db + backend (http://localhost:8000/docs)
+#   docker compose down                    # stop; data persists in the named volume
+#   docker compose down -v                 # stop and wipe the data volume
+#
+# Override host ports if 5432 / 8000 are taken (the in-container ports stay fixed):
+#   POSTGRES_HOST_PORT=5433 BACKEND_HOST_PORT=8001 docker compose up --build
+
+services:
+  db:
+    image: postgres:16
+    container_name: banking_crm_db
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: banking_crm
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d banking_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: banking_crm_backend
+    depends_on:
+      db:
+        condition: service_healthy   # wait until Postgres passes its healthcheck
+    # Single source of truth for app config — including the ANTHROPIC_API_KEY secret —
+    # loaded at runtime from backend/.env (never baked into the image).
+    env_file:
+      - ./backend/.env
+    environment:
+      # The one value that must differ from the host-run .env: inside the compose
+      # network, reach Postgres by the service name `db`, not localhost. This overrides
+      # whatever DATABASE_URL is in backend/.env.
+      DATABASE_URL: postgresql+asyncpg://crm:crm@db:5432/banking_crm
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8000"
+    # Idempotent on re-run: migrations are versioned and the seeder resets before
+    # inserting. Order: migrate -> seed -> serve (0.0.0.0 so the host can reach it).
+    command: >
+      sh -c "alembic upgrade head &&
+             python data/generate_seed.py &&
+             python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # Run the test suite inside the image against the Dockerized Postgres. Gated behind
+  # the "test" profile so it never starts with `docker compose up`, and kept separate
+  # from the app entrypoint so server boot never depends on tests. One command:
+  #   docker compose run --rm test
+  test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "true"        # this image includes pytest; the app image does not
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://crm:crm@db:5432/banking_crm
+    # Pure logic tests need nothing; the DB-backed tool tests need a seeded database,
+    # so migrate + seed first, then run the suite.
+    command: >
+      sh -c "alembic upgrade head &&
+             python data/generate_seed.py &&
+             pytest -q"
+
+volumes:
+  pgdata:

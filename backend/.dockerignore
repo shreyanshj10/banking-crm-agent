@@ -1,0 +1,13 @@
+# Keep the build context small and never bake secrets/cruft into the image.
+.env
+.env.*
+.venv
+.git
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+.next/
