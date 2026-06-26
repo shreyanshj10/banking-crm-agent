@@ -123,15 +123,17 @@ curl/docs) → Next.js → docker-compose → README.
 - `app/main.py` — async app factory, DB lifespan (engine init/dispose).
 - `app/api/routes/chat.py` — async `POST /chat {session_id, message}` → maps `session_id`
   to graph `thread_id`, runs agent via `ainvoke`, returns reply (+ structured artifacts
-  like shortlist/messages).
+  like shortlist/messages). A streaming `POST /chat/stream` (Server-Sent Events) variant
+  drives the same agent via `astream`, emitting tool calls/results live for the client's
+  agent-path trace.
 - **Verify (end-to-end backend gate — before any frontend):** `uvicorn` up; via `/docs`
   and `curl`, run all demo use cases (full find+message; "why did X rank high"; cross-sell
   recommend; top-N list). Same `session_id` across two calls shows memory continuity.
 
 ## Step 9 — Minimal Next.js chat client
-- Single-page chat UI: message list + input, posts to `/chat` with a generated
-  `session_id`, renders replies. Thin client only — no business logic. API base URL from
-  env, not hardcoded.
+- Single-page chat UI: message list + input, talks to `/chat/stream` with a generated
+  `session_id`, renders replies and the live agent-path trace. Thin client only — no
+  business logic. API base URL from env, not hardcoded.
 - **Verify:** run dev server, type the canonical query, see the shortlist + messages
   render; follow-up "why did the top one rank high?" works in the same session.
 

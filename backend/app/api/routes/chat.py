@@ -7,10 +7,13 @@ the HTTP response.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.agent.graph import run_agent
+from app.agent.graph import run_agent, stream_agent
 
 router = APIRouter()
 
@@ -47,3 +50,25 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     # session_id maps directly to the agent's conversation thread_id.
     result = await run_agent(graph, req.message, req.session_id)
     return ChatResponse(session_id=req.session_id, **result)
+
+
+@router.post("/chat/stream")
+async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
+    """Server-Sent Events variant of /chat: streams the agent's progress (tool
+    calls + results) as it runs, then the final reply. /chat above is the
+    non-streaming request/response endpoint.
+    """
+    graph = request.app.state.graph
+
+    async def event_stream():
+        try:
+            async for event in stream_agent(graph, req.message, req.session_id):
+                yield f"data: {json.dumps({'session_id': req.session_id, **event})}\n\n"
+        except Exception as exc:  # surface the error to the client, then close cleanly
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

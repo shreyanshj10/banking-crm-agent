@@ -11,8 +11,8 @@ and drafts personalized outreach.
 The system is **four layers**:
 
 ```
-Next.js chat UI  →  FastAPI /chat  →  LangGraph agent  →  Tools  →  PostgreSQL
-   (thin client)     (async route)     (tool-calling      (async)    (async, asyncpg)
+Next.js chat UI  →  FastAPI /chat/stream  →  LangGraph agent  →  Tools  →  PostgreSQL
+   (thin client)     (async route, SSE)       (tool-calling      (async)    (async, asyncpg)
                                          loop, LLM picks
                                          the tools)
 ```
@@ -29,7 +29,7 @@ flowchart LR
     end
 
     subgraph API["FastAPI (async)"]
-      CHAT["POST /chat<br/>{session_id, message}"]
+      STREAM["POST /chat/stream<br/>SSE: live tool trace + reply"]
     end
 
     subgraph Agent["LangGraph agent (async)"]
@@ -48,22 +48,30 @@ flowchart LR
 
     DB[("PostgreSQL<br/>customers · transactions<br/>products · holdings")]
 
-    UI --> CHAT --> LLM
+    UI --> STREAM --> LLM
     TOOLS --> DATA --> DB
     TOOLS --> SCORE --> DB
     TOOLS --> MSG
-    DONE --> CHAT --> UI
+    DONE --> STREAM --> UI
 ```
+
+The UI's path is **`/chat/stream`** (Server-Sent Events): tool calls/results stream
+back live for the agent-path trace, then the reply. A non-streaming **`POST /chat`**
+(full result in one JSON response) is also available for curl / programmatic use.
 
 ## Execution flow (canonical query)
 
 *"Find high-value customers likely to convert for a personal loan this month and
 generate personalized WhatsApp messages."*
 
-1. **UI → API.** The chat UI POSTs `{session_id, message}` to `/chat`.
+1. **UI → API.** The chat UI opens a Server-Sent Events stream to `/chat/stream` with
+   `{session_id, message}`; tool calls/results stream back live, then the reply. (A
+   non-streaming `POST /chat` returning the full result in one JSON payload is also
+   available.)
 2. **API → agent.** The route maps `session_id` to a LangGraph `thread_id` and drives
-   the compiled graph with `ainvoke`. Conversation state (the `messages` list) is held
-   per thread by an in-memory checkpointer.
+   the compiled graph with `astream` (`ainvoke` for the non-streaming `/chat`).
+   Conversation state (the `messages` list) is held per thread by an in-memory
+   checkpointer.
 3. **Plan (LLM).** The agent node reads the query and decides the first tool call(s).
 4. **Resolve product + candidates.** `get_products` resolves "personal loan" →
    `product_id` + eligibility; `query_customers` pulls a candidate pool with SQL-side

@@ -203,3 +203,93 @@ async def run_agent(graph, query: str, thread_id: str) -> dict:
         tc.pop("id", None)
 
     return {"reply": reply, "tool_calls": tool_calls, "generated_messages": generated_messages}
+
+
+async def stream_agent(graph, query: str, thread_id: str):
+    """Async generator of agent progress events, for SSE streaming.
+
+    Mirrors run_agent's parsing but YIELDS events as the graph runs, so the client
+    can render the trace and answer live:
+        {"type": "tool_call",   "name", "args", "id"}     — agent calls a tool
+        {"type": "tool_result", "name", "id", "result"}   — a tool returns
+        {"type": "final", "reply", "tool_calls", "generated_messages"}
+
+    This is a SEPARATE, additive path: run_agent (used by the non-streaming /chat)
+    is intentionally left untouched.
+    """
+    logger.info("[%s] STREAM QUERY: %s", thread_id, query)
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+
+    reply = ""
+    tool_calls: list[dict] = []
+    generated_messages: list[dict] = []
+
+    async for update in graph.astream(
+        {"messages": [HumanMessage(content=query)]}, config, stream_mode="updates"
+    ):
+        for _node, payload in update.items():
+            for msg in payload.get("messages", []):
+                if isinstance(msg, AIMessage):
+                    for call in msg.tool_calls or []:
+                        tool_calls.append(
+                            {
+                                "name": call["name"],
+                                "args": call["args"],
+                                "id": call.get("id"),
+                                "result": None,
+                            }
+                        )
+                        logger.info(
+                            "[%s] TOOL CALL  %s args=%s", thread_id, call["name"], call["args"]
+                        )
+                        yield {
+                            "type": "tool_call",
+                            "name": call["name"],
+                            "args": call["args"],
+                            "id": call.get("id"),
+                        }
+                    if not msg.tool_calls and (msg.content or "").strip():
+                        reply = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        logger.info("[%s] FINAL RESPONSE: %s", thread_id, _truncate(reply, 600))
+                elif isinstance(msg, ToolMessage):
+                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                    summary = _summarize_result(msg.name, content)
+                    logger.info("[%s] TOOL RESULT %s -> %s", thread_id, msg.name, summary)
+                    tc_id = getattr(msg, "tool_call_id", None)
+                    target = next(
+                        (
+                            tc
+                            for tc in tool_calls
+                            if tc["id"] and tc["id"] == tc_id and tc["result"] is None
+                        ),
+                        None,
+                    ) or next(
+                        (
+                            tc
+                            for tc in tool_calls
+                            if tc["name"] == msg.name and tc["result"] is None
+                        ),
+                        None,
+                    )
+                    if target is not None:
+                        target["result"] = summary
+                    yield {"type": "tool_result", "name": msg.name, "id": tc_id, "result": summary}
+                    if msg.name == "generate_message":
+                        data = _parse_content(content)
+                        if isinstance(data, dict) and data.get("message"):
+                            generated_messages.append(
+                                {
+                                    "customer_id": data.get("customer_id"),
+                                    "product_id": data.get("product_id"),
+                                    "message": data.get("message"),
+                                }
+                            )
+
+    for tc in tool_calls:
+        tc.pop("id", None)
+    yield {
+        "type": "final",
+        "reply": reply,
+        "tool_calls": tool_calls,
+        "generated_messages": generated_messages,
+    }

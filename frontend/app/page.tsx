@@ -17,6 +17,7 @@ type ToolStep = {
   name: string;
   args: Record<string, unknown>;
   result: string | null;
+  id?: string; // used to match streamed tool_result events to their tool_call
 };
 
 type Message = {
@@ -24,6 +25,7 @@ type Message = {
   content: string;
   trace?: ToolStep[];
   elapsedMs?: number;
+  streaming?: boolean;
 };
 
 function fmtVal(v: unknown): string {
@@ -56,8 +58,16 @@ function groupSteps(steps: ToolStep[]): { name: string; items: ToolStep[] }[] {
 // arguments and a short result summary. Collapsed by default to a one-line path;
 // click the header to expand the per-step args + result detail. Repeated calls to
 // the same tool are grouped (×N) with one sub-row per call.
-function Trace({ steps, elapsedMs }: { steps: ToolStep[]; elapsedMs?: number }) {
-  const [open, setOpen] = useState(false);
+function Trace({
+  steps,
+  elapsedMs,
+  defaultOpen = false,
+}: {
+  steps: ToolStep[];
+  elapsedMs?: number;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const groups = groupSteps(steps);
   const meta =
     `${steps.length} tool call${steps.length > 1 ? 's' : ''}` +
@@ -151,6 +161,105 @@ export default function Page() {
     threadRef.current?.scrollTo(0, threadRef.current.scrollHeight);
   }, [messages, loading]);
 
+  // Patch the most recent assistant message in place (used while streaming).
+  function patchLastAssistant(patch: (a: Message) => Message) {
+    setMessages((m) => {
+      const copy = m.slice();
+      for (let i = copy.length - 1; i >= 0; i--) {
+        if (copy[i].role === 'assistant') {
+          copy[i] = patch(copy[i]);
+          break;
+        }
+      }
+      return copy;
+    });
+  }
+
+  // Stream the agent's progress over SSE: render tool events live, then the reply.
+  // The UI streams only; any failure surfaces in the assistant bubble in place.
+  async function streamChat(content: string, started: number) {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message: content }),
+      });
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        { role: 'assistant', content: `Couldn't reach the assistant — ${String(err)}.` },
+      ]);
+      return;
+    }
+    if (!res.ok || !res.body) {
+      setMessages((m) => [
+        ...m,
+        { role: 'assistant', content: `Couldn't reach the assistant (HTTP ${res.status}).` },
+      ]);
+      return;
+    }
+
+    setMessages((m) => [...m, { role: 'assistant', content: '', trace: [], streaming: true }]);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const data = frame.split('\n').find((l) => l.startsWith('data:'));
+          if (!data) continue;
+          const ev = JSON.parse(data.slice(5).trim());
+          if (ev.type === 'tool_call') {
+            patchLastAssistant((a) => ({
+              ...a,
+              trace: [...(a.trace ?? []), { name: ev.name, args: ev.args ?? {}, result: null, id: ev.id }],
+            }));
+          } else if (ev.type === 'tool_result') {
+            patchLastAssistant((a) => {
+              const trace = (a.trace ?? []).map((s) => ({ ...s }));
+              const t =
+                trace.find((s) => s.id && s.id === ev.id && s.result == null) ??
+                trace.find((s) => s.name === ev.name && s.result == null);
+              if (t) t.result = ev.result;
+              return { ...a, trace };
+            });
+          } else if (ev.type === 'final') {
+            patchLastAssistant((a) => ({
+              ...a,
+              content: ev.reply || a.content || '(no reply)',
+              streaming: false,
+              elapsedMs: Date.now() - started,
+              trace: a.trace && a.trace.length ? a.trace : ((ev.tool_calls ?? []) as ToolStep[]),
+            }));
+          } else if (ev.type === 'error') {
+            patchLastAssistant((a) => ({
+              ...a,
+              content: a.content || `The assistant hit an error — ${ev.message}.`,
+              streaming: false,
+            }));
+          }
+        }
+      }
+    } catch (err) {
+      // Mid-stream failure (bubble already exists): finalize in place, never rethrow.
+      patchLastAssistant((a) => ({
+        ...a,
+        content: a.content || `Stream interrupted — ${String(err)}.`,
+        streaming: false,
+      }));
+    } finally {
+      patchLastAssistant((a) => (a.streaming ? { ...a, streaming: false } : a));
+    }
+  }
+
   async function send(text?: string) {
     const content = (text ?? input).trim();
     if (!content || loading || !sessionId) return;
@@ -160,27 +269,7 @@ export default function Page() {
     setLoading(true);
     const started = Date.now();
     try {
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message: content }),
-      });
-      if (!res.ok) throw new Error(`request failed (HTTP ${res.status})`);
-      const data = await res.json();
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          content: data.reply ?? '(no reply)',
-          trace: (data.tool_calls ?? []) as ToolStep[],
-          elapsedMs: Date.now() - started,
-        },
-      ]);
-    } catch (e) {
-      setMessages((m) => [
-        ...m,
-        { role: 'assistant', content: `Couldn't reach the assistant — ${String(e)}.` },
-      ]);
+      await streamChat(content, started);
     } finally {
       setLoading(false);
     }
@@ -228,15 +317,30 @@ export default function Page() {
             </div>
           ) : (
             <div key={i} className="msg msg--assistant">
-              <div className="md">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-              </div>
-              {m.trace && m.trace.length > 0 && <Trace steps={m.trace} elapsedMs={m.elapsedMs} />}
+              {/* Top slot: the processing indicator while streaming, replaced in
+                  place by the reply once it arrives. The trace streams below it. */}
+              {m.content ? (
+                <div className="md">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                </div>
+              ) : m.streaming ? (
+                <div className="streaming-note">
+                  <span className="thinking__dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  Agent is processing…
+                </div>
+              ) : null}
+              {m.trace && m.trace.length > 0 && (
+                <Trace steps={m.trace} elapsedMs={m.elapsedMs} defaultOpen={!!m.streaming} />
+              )}
             </div>
           ),
         )}
 
-        {loading && (
+        {loading && messages[messages.length - 1]?.role === 'user' && (
           <div className="thinking">
             <span className="thinking__dots">
               <i />

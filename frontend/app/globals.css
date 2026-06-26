@@ -452,6 +452,17 @@ body {
   opacity: 0.7;
 }
 
+/* Live streaming "working…" note under a message ----------------------- */
+.streaming-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
 /* Thinking indicator ---------------------------------------------------- */
 .thinking {
   align-self: flex-start;
