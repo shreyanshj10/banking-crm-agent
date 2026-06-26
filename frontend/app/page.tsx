@@ -8,16 +8,126 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
 
 const EXAMPLES = [
   'Find high-value customers likely to convert for a personal loan this month and draft personalized WhatsApp messages.',
-  'Why did customer C00040 rank high for a personal loan?',
-  'What is the best product to cross-sell to customer C00014?',
+  'Show me a top personal-loan prospect and explain why they rank so high.',
+  'What is the best product to cross-sell to my highest-balance customer?',
   'List my top 10 customers by average balance.',
 ];
+
+type ToolStep = {
+  name: string;
+  args: Record<string, unknown>;
+  result: string | null;
+};
 
 type Message = {
   role: 'user' | 'assistant';
   content: string;
-  tools?: string[];
+  trace?: ToolStep[];
+  elapsedMs?: number;
 };
+
+function fmtVal(v: unknown): string {
+  if (typeof v === 'string') return v.length > 24 ? `"${v.slice(0, 23)}…"` : `"${v}"`;
+  if (Array.isArray(v)) return `[${v.length}]`;
+  if (v && typeof v === 'object') return '{…}';
+  return String(v);
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  const s = Object.entries(args ?? {})
+    .map(([k, v]) => `${k}: ${fmtVal(v)}`)
+    .join(', ');
+  return s.length > 100 ? `${s.slice(0, 99)}…` : s;
+}
+
+// Collapse consecutive calls to the same tool (e.g. generate_message per customer)
+// into one group, so the path stays readable while keeping each call's detail.
+function groupSteps(steps: ToolStep[]): { name: string; items: ToolStep[] }[] {
+  const groups: { name: string; items: ToolStep[] }[] = [];
+  for (const s of steps) {
+    const last = groups[groups.length - 1];
+    if (last && last.name === s.name) last.items.push(s);
+    else groups.push({ name: s.name, items: [s] });
+  }
+  return groups;
+}
+
+// Post-response "agent path": the ordered tools the agent chose, each with its
+// arguments and a short result summary. Collapsed by default to a one-line path;
+// click the header to expand the per-step args + result detail. Repeated calls to
+// the same tool are grouped (×N) with one sub-row per call.
+function Trace({ steps, elapsedMs }: { steps: ToolStep[]; elapsedMs?: number }) {
+  const [open, setOpen] = useState(false);
+  const groups = groupSteps(steps);
+  const meta =
+    `${steps.length} tool call${steps.length > 1 ? 's' : ''}` +
+    (elapsedMs ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : '');
+  return (
+    <div className={`trace${open ? ' trace--open' : ''}`}>
+      <button
+        className="trace__head"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        title="Execution trace: the tools the agent called to answer, with their inputs and results"
+      >
+        <span className="trace__caret">{open ? '▾' : '▸'}</span>
+        <span className="trace__label">agent path</span>
+        <span className="trace__meta">{meta}</span>
+      </button>
+      <p className="trace__caption">
+        Execution trace — surfaced for transparency: every tool the agent called to answer, with its inputs
+        and result.
+      </p>
+      {!open && (
+        <div className="trace__summary">
+          {groups.map((g, j) => (
+            <Fragment key={j}>
+              {j > 0 && <span className="trace__arrow">→</span>}
+              <span className="trace__tool">
+                {g.name}
+                {g.items.length > 1 && <span className="trace__count"> ×{g.items.length}</span>}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      )}
+      {open && (
+        <ol className="trace__steps">
+          {groups.map((g, j) => (
+            <li key={j} className="trace__step">
+              <span className="trace__num">{j + 1}</span>
+              <div className="trace__bodycol">
+                <div className="trace__line">
+                  <span className="trace__tool">{g.name}</span>
+                  {g.items.length > 1 ? (
+                    <span className="trace__count">×{g.items.length}</span>
+                  ) : (
+                    formatArgs(g.items[0].args) && (
+                      <code className="trace__args">{formatArgs(g.items[0].args)}</code>
+                    )
+                  )}
+                </div>
+                {g.items.length > 1 ? (
+                  <ul className="trace__sub">
+                    {g.items.map((it, k) => (
+                      <li key={k} className="trace__subitem">
+                        <span className="trace__subarrow">↳</span>
+                        {formatArgs(it.args) && <code className="trace__args">{formatArgs(it.args)}</code>}
+                        {it.result && <span className="trace__result">→ {it.result}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  g.items[0].result && <div className="trace__result">→ {g.items[0].result}</div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 export default function Page() {
   const [sessionId, setSessionId] = useState('');
@@ -48,6 +158,7 @@ export default function Page() {
     setMessages((m) => [...m, { role: 'user', content }]);
     setInput('');
     setLoading(true);
+    const started = Date.now();
     try {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
@@ -61,7 +172,8 @@ export default function Page() {
         {
           role: 'assistant',
           content: data.reply ?? '(no reply)',
-          tools: (data.tool_calls ?? []).map((t: { name: string }) => t.name),
+          trace: (data.tool_calls ?? []) as ToolStep[],
+          elapsedMs: Date.now() - started,
         },
       ]);
     } catch (e) {
@@ -119,17 +231,7 @@ export default function Page() {
               <div className="md">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
               </div>
-              {m.tools && m.tools.length > 0 && (
-                <div className="trace">
-                  <span className="trace__label">agent path</span>
-                  {m.tools.map((t, j) => (
-                    <Fragment key={j}>
-                      {j > 0 && <span className="trace__arrow">→</span>}
-                      <span className="trace__tool">{t}</span>
-                    </Fragment>
-                  ))}
-                </div>
-              )}
+              {m.trace && m.trace.length > 0 && <Trace steps={m.trace} elapsedMs={m.elapsedMs} />}
             </div>
           ),
         )}

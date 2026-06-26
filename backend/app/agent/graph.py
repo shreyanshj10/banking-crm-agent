@@ -130,8 +130,9 @@ async def run_agent(graph, query: str, thread_id: str) -> dict:
     """Run one RM query through the agent, logging a readable per-request trace.
 
     Driven via `astream` (async only). Returns a structured result:
-        {"reply": str, "tool_calls": [{name, args}, ...],
+        {"reply": str, "tool_calls": [{name, args, result}, ...],
          "generated_messages": [{customer_id, product_id, message}, ...]}
+    where `result` is a short human-readable summary of each tool's output.
     so the API route can stay thin (no business logic in the route).
     """
     logger.info("[%s] QUERY: %s", thread_id, query)
@@ -148,7 +149,14 @@ async def run_agent(graph, query: str, thread_id: str) -> dict:
             for msg in payload.get("messages", []):
                 if isinstance(msg, AIMessage):
                     for call in msg.tool_calls or []:
-                        tool_calls.append({"name": call["name"], "args": call["args"]})
+                        tool_calls.append(
+                            {
+                                "name": call["name"],
+                                "args": call["args"],
+                                "id": call.get("id"),
+                                "result": None,
+                            }
+                        )
                         logger.info(
                             "[%s] TOOL CALL  %s args=%s", thread_id, call["name"], call["args"]
                         )
@@ -157,12 +165,28 @@ async def run_agent(graph, query: str, thread_id: str) -> dict:
                         logger.info("[%s] FINAL RESPONSE: %s", thread_id, _truncate(reply, 600))
                 elif isinstance(msg, ToolMessage):
                     content = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    logger.info(
-                        "[%s] TOOL RESULT %s -> %s",
-                        thread_id,
-                        msg.name,
-                        _summarize_result(msg.name, content),
+                    summary = _summarize_result(msg.name, content)
+                    logger.info("[%s] TOOL RESULT %s -> %s", thread_id, msg.name, summary)
+                    # Attach the result to its originating call (match by id, then by name)
+                    # so the UI can show "tool -> result" in the agent-path trace.
+                    tc_id = getattr(msg, "tool_call_id", None)
+                    target = next(
+                        (
+                            tc
+                            for tc in tool_calls
+                            if tc["id"] and tc["id"] == tc_id and tc["result"] is None
+                        ),
+                        None,
+                    ) or next(
+                        (
+                            tc
+                            for tc in tool_calls
+                            if tc["name"] == msg.name and tc["result"] is None
+                        ),
+                        None,
                     )
+                    if target is not None:
+                        target["result"] = summary
                     if msg.name == "generate_message":
                         data = _parse_content(content)
                         if isinstance(data, dict) and data.get("message"):
@@ -173,5 +197,9 @@ async def run_agent(graph, query: str, thread_id: str) -> dict:
                                     "message": data.get("message"),
                                 }
                             )
+
+    # Drop the internal call id before returning — the API exposes only name/args/result.
+    for tc in tool_calls:
+        tc.pop("id", None)
 
     return {"reply": reply, "tool_calls": tool_calls, "generated_messages": generated_messages}

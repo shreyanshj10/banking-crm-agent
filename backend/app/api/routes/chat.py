@@ -29,6 +29,7 @@ class GeneratedMessage(BaseModel):
 class ToolCall(BaseModel):
     name: str
     args: dict
+    result: str | None = None
 
 
 class ChatResponse(BaseModel):

@@ -1,11 +1,11 @@
 """LLM-facing messaging tools.
 
-- generate_message: LLM-driven, personalized. Fetches the customer's REAL
-  attributes and the product, then asks Claude to write a short WhatsApp message
-  grounded in those specifics (name, the actual product, a real data point) —
-  not a generic template. Uses ANTHROPIC_MESSAGE_MODEL; the API key comes from
-  settings (env). No temperature/top_p/top_k/budget_tokens are passed (they 400
-  on Opus 4.8).
+- generate_message: LLM-driven, personalized. Fetches the customer and product,
+  then asks Claude to write a short WhatsApp message grounded in SAFE, non-sensitive
+  personalization (name, city, relationship tenure) and the actual product — never
+  sensitive figures like balance, income, or credit score. Uses
+  ANTHROPIC_MESSAGE_MODEL; the API key comes from settings (env). No
+  temperature/top_p/top_k/budget_tokens are passed (they 400 on Opus 4.8).
 - send_whatsapp: MOCKED. Sends nothing real; returns a clearly-labeled status.
 """
 
@@ -24,9 +24,12 @@ _SYSTEM = (
     "You are a relationship manager's assistant at a retail bank. You write short, "
     "warm, professional WhatsApp messages to customers about a banking product. "
     "Keep it to 2-3 sentences. Address the customer by first name, name the product "
-    "explicitly, reference at least one of the provided real data points so the "
-    "message is clearly personalized, and end with a soft call to action. Do not "
-    "invent numbers or use placeholders like [name]."
+    "explicitly, personalize using only the relationship detail provided (e.g. how "
+    "long they have banked with us, their city), and end with a soft call to action. "
+    "NEVER disclose or quote sensitive personal data in the message — account "
+    "balances, income, credit scores, or internal segment/score labels. Keep "
+    "personalization relationship-based, not numeric. Do not invent numbers or use "
+    "placeholders like [name]."
 )
 
 
@@ -43,8 +46,9 @@ def _message_text(response) -> str:
 async def generate_message(customer_id: str, product_id: str, channel: str = "whatsapp") -> dict:
     """Generate a personalized outreach message for a customer about a product.
 
-    The message is grounded in the customer's real attributes (name, segment,
-    average balance, tenure) and the actual product — not a generic template.
+    The message is grounded in safe, non-sensitive personalization (first name,
+    city, how long they have banked with us) and the actual product — never the
+    customer's balance, income, credit score, or other sensitive figures.
 
     Args:
         customer_id: the customer's id (e.g. "C00123").
@@ -62,14 +66,15 @@ async def generate_message(customer_id: str, product_id: str, channel: str = "wh
             return {"error": f"product {product_id} not found"}
 
         first_name = customer.name.split()[0]
+        # Only NON-sensitive personalization anchors are exposed to the message
+        # model — never balance, income, credit score, or internal segment — so a
+        # customer-facing message can't leak private financials.
         facts = (
-            f"average monthly balance ₹{float(customer.monthly_avg_balance):,.0f}; "
-            f"banking with us since {customer.relationship_since.year}; "
-            f"segment {customer.segment}; city {customer.city}"
+            f"banking with us since {customer.relationship_since.year}; based in {customer.city}"
         )
         prompt = (
             f"Customer first name: {first_name}\n"
-            f"Real data points (reference at least one): {facts}\n"
+            f"Relationship detail to personalize with: {facts}\n"
             f"Product to offer: {product.name} — {product.description}\n"
             f"Channel: {channel}\n"
             f"Write the message now."

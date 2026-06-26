@@ -310,12 +310,27 @@ body {
   margin-top: 15px;
   padding-top: 12px;
   border-top: 1px dashed var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.trace__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trace__caret {
+  color: var(--accent);
+  font-size: 9px;
+  width: 10px;
 }
 
 .trace__label {
@@ -323,7 +338,69 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-right: 2px;
+}
+
+.trace__meta {
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.trace__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  padding-left: 17px;
+}
+
+.trace__caption {
+  margin: 9px 0 0;
+  padding-left: 17px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.trace__steps {
+  list-style: none;
+  margin: 11px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.trace__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.trace__num {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  line-height: 17px;
+  text-align: center;
+}
+
+.trace__bodycol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trace__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
 }
 
 .trace__tool {
@@ -332,6 +409,42 @@ body {
   border: 1px solid var(--accent-line);
   border-radius: 999px;
   padding: 2px 9px;
+}
+
+.trace__args {
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.trace__result {
+  color: var(--muted);
+}
+
+.trace__count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.trace__sub {
+  list-style: none;
+  margin: 5px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trace__subitem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.trace__subarrow {
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 .trace__arrow {
